@@ -45,7 +45,7 @@
 -- -- ✅ Inventory should be restored
 -- SELECT * FROM inventory WHERE product_id = 1;
 
-
+SELECT * FROM inventory WHERE store_id = 1 AND product_id = 7;
 
 -- Reduce product 7 @ store 1 below restock threshold (e.g., 4 < threshold 5)
 UPDATE inventory SET quantity = 4 WHERE store_id = 1 AND product_id = 7;
@@ -56,3 +56,11 @@ SELECT * FROM restocks WHERE product_id = 7 ORDER BY restock_date DESC;
 
 -- Inventory after restock (should be +20)
 SELECT * FROM inventory WHERE store_id = 1 AND product_id = 7;
+
+
+
+
+-- SELECT id, product_id, store_id, quantity, restock_threshold
+-- FROM inventory
+-- WHERE store_id = 1 AND product_id = 7;
+
