@@ -195,37 +195,44 @@ $$ LANGUAGE plpgsql;
 
 
 
-
--- Set address
-
-CREATE OR REPLACE FUNCTION set_customer_default_address(
-    p_address_id INTEGER
-) RETURNS VOID AS $$
+CREATE OR REPLACE FUNCTION add_customer_address(
+    p_customer_id INTEGER,
+    p_street TEXT,
+    p_city TEXT,
+    p_state TEXT,
+    p_postal_code TEXT,
+    p_country TEXT,
+    p_address_type VARCHAR DEFAULT 'shipping',
+    p_is_default BOOLEAN DEFAULT false
+) RETURNS INTEGER AS $$
 DECLARE
-v_customer_id INTEGER;
-    v_address_type VARCHAR;
+    v_address_id INTEGER;
 BEGIN
-    -- Get customer_id and address_type of the target address
-SELECT customer_id, address_type
-INTO v_customer_id, v_address_type
-FROM customer_addresses
-WHERE id = p_address_id;
+    -- If setting this address as default, unset previous defaults of the same type
+    IF p_is_default THEN
+        UPDATE customer_addresses
+        SET is_default = false
+        WHERE customer_id = p_customer_id
+          AND address_type = p_address_type
+          AND is_default = true;
+    END IF;
 
--- Unset any existing default of this type for the customer
-UPDATE customer_addresses
-SET is_default = false
-WHERE customer_id = v_customer_id
-  AND address_type = v_address_type;
+    -- Insert the new address
+    INSERT INTO customer_addresses (
+        customer_id, street, city, state, postal_code, country, address_type, is_default
+    ) VALUES (
+                 p_customer_id, p_street, p_city, p_state, p_postal_code, p_country, p_address_type, p_is_default
+             ) RETURNING id INTO v_address_id;
 
--- Set this one as default
-UPDATE customer_addresses
-SET is_default = true
-WHERE id = p_address_id;
+    RETURN v_address_id;
 END;
 $$ LANGUAGE plpgsql;
 
 
-   -- Set Customer Address as Default
+
+
+
+-- Set address
 
 CREATE OR REPLACE FUNCTION set_customer_default_address(
     p_address_id INTEGER

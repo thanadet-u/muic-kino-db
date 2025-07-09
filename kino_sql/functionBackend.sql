@@ -145,39 +145,6 @@ $$ LANGUAGE plpgsql;
 -- Simple insert into authors table
 -- =================================================
 
-CREATE OR REPLACE FUNCTION add_customer_address(
-    p_customer_id INTEGER,
-    p_street TEXT,
-    p_city TEXT,
-    p_state TEXT,
-    p_postal_code TEXT,
-    p_country TEXT,
-    p_address_type VARCHAR DEFAULT 'shipping',
-    p_is_default BOOLEAN DEFAULT false
-) RETURNS INTEGER AS $$
-DECLARE
-    v_address_id INTEGER;
-BEGIN
-    -- If setting this address as default, unset previous defaults of the same type
-    IF p_is_default THEN
-        UPDATE customer_addresses
-        SET is_default = false
-        WHERE customer_id = p_customer_id
-          AND address_type = p_address_type
-          AND is_default = true;
-    END IF;
-
-    -- Insert the new address
-    INSERT INTO customer_addresses (
-        customer_id, street, city, state, postal_code, country, address_type, is_default
-    ) VALUES (
-                 p_customer_id, p_street, p_city, p_state, p_postal_code, p_country, p_address_type, p_is_default
-             ) RETURNING id INTO v_address_id;
-
-    RETURN v_address_id;
-END;
-$$ LANGUAGE plpgsql;
-
 
 
 -- ===========================================
@@ -693,7 +660,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-
+DROP FUNCTION IF EXISTS check_membership(INTEGER);
 
 CREATE OR REPLACE FUNCTION check_membership(p_customer_id INTEGER)
     RETURNS BOOLEAN AS $$
