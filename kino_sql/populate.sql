@@ -168,14 +168,14 @@ INSERT INTO non_book_products (product_id, item_type, specifications) VALUES
 INSERT INTO memberships (customer_id, membership_number, join_date, expiry_date, points_balance, discount_percentage) VALUES
                                                                                                                           (1, 'KINO-TH-001', '2023-01-15', '2024-01-15', 3500, 10.00),
                                                                                                                           (2, 'KINO-TH-002', '2023-03-22', '2024-03-22', 1250, 5.00),
-                                                                                                                          (3, 'KINO-TH-003', '2023-02-10', '2024-02-10', 5000, 15.00),
+                                                                                                                          (3, 'KINO-TH-003', '2023-02-10', '2026-02-10', 5000, 15.00),
                                                                                                                           (4, 'KINO-TH-004', '2023-04-05', '2024-04-05', 800, 5.00),
-                                                                                                                          (5, 'KINO-TH-005', '2023-05-20', '2024-05-20', 4200, 12.00),
+                                                                                                                          (5, 'KINO-TH-005', '2023-05-20', '2025-05-20', 4200, 12.00),
                                                                                                                           (6, 'KINO-TH-006', '2023-06-15', '2024-06-15', 1500, 8.00),
                                                                                                                           (7, 'KINO-TH-007', '2023-03-01', '2024-03-01', 3000, 10.00),
-                                                                                                                          (8, 'KINO-TH-008', '2023-07-10', '2024-07-10', 200, 5.00),
+                                                                                                                          (8, 'KINO-TH-008', '2023-07-10', '2026-07-10', 200, 5.00),
                                                                                                                           (9, 'KINO-TH-009', '2023-01-05', '2024-01-05', 6000, 15.00),
-                                                                                                                          (10, 'KINO-TH-010', '2023-04-18', '2024-04-18', 3500, 10.00);
+                                                                                                                          (10, 'KINO-TH-010', '2023-04-18', '2026-04-18', 3500, 10.00);
 
 -- Populate discounts (10 rows)
 INSERT INTO discounts (name, discount_type, value, start_date, end_date, is_active) VALUES
