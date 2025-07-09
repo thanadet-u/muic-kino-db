@@ -46,7 +46,8 @@ CREATE TABLE customers (
                            id SERIAL PRIMARY KEY,
                            first_name VARCHAR(50) NOT NULL,
                            last_name VARCHAR(50) NOT NULL,
-                           contact_id INTEGER REFERENCES contacts(id)
+                           contact_id INTEGER REFERENCES contacts(id),
+                           password_hash VARCHAR(255) NOT NULL
 );
 
 -- Customer Addresses Table (with is_default)

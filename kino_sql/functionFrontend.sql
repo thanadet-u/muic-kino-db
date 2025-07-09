@@ -68,3 +68,164 @@ $$ LANGUAGE plpgsql;
 
 
 
+
+
+-- Delete Customer Address
+CREATE OR REPLACE FUNCTION delete_customer_address(
+    p_address_id INTEGER
+) RETURNS VOID AS $$
+BEGIN
+DELETE FROM customer_addresses WHERE id = p_address_id;
+END;
+$$ LANGUAGE plpgsql;
+
+
+
+
+
+
+
+-- Set address
+
+CREATE OR REPLACE FUNCTION set_customer_default_address(
+    p_address_id INTEGER
+) RETURNS VOID AS $$
+DECLARE
+v_customer_id INTEGER;
+    v_address_type VARCHAR;
+BEGIN
+    -- Get customer_id and address_type of the target address
+SELECT customer_id, address_type
+INTO v_customer_id, v_address_type
+FROM customer_addresses
+WHERE id = p_address_id;
+
+-- Unset any existing default of this type for the customer
+UPDATE customer_addresses
+SET is_default = false
+WHERE customer_id = v_customer_id
+  AND address_type = v_address_type;
+
+-- Set this one as default
+UPDATE customer_addresses
+SET is_default = true
+WHERE id = p_address_id;
+END;
+$$ LANGUAGE plpgsql;
+
+
+   -- Set Customer Address as Default
+
+CREATE OR REPLACE FUNCTION set_customer_default_address(
+    p_address_id INTEGER
+) RETURNS VOID AS $$
+DECLARE
+v_customer_id INTEGER;
+    v_address_type VARCHAR;
+BEGIN
+    -- Get customer_id and address_type of the target address
+SELECT customer_id, address_type
+INTO v_customer_id, v_address_type
+FROM customer_addresses
+WHERE id = p_address_id;
+
+-- Unset any existing default of this type for the customer
+UPDATE customer_addresses
+SET is_default = false
+WHERE customer_id = v_customer_id
+  AND address_type = v_address_type;
+
+-- Set this one as default
+UPDATE customer_addresses
+SET is_default = true
+WHERE id = p_address_id;
+END;
+$$ LANGUAGE plpgsql;
+
+
+
+-- Edit Customer Address
+
+CREATE OR REPLACE FUNCTION edit_customer_address(
+    p_address_id INTEGER,
+    p_street TEXT,
+    p_city TEXT,
+    p_state TEXT,
+    p_postal_code TEXT,
+    p_country TEXT,
+    p_is_default BOOLEAN DEFAULT false
+) RETURNS VOID AS $$
+DECLARE
+v_customer_id INTEGER;
+    v_address_type VARCHAR;
+BEGIN
+SELECT customer_id, address_type
+INTO v_customer_id, v_address_type
+FROM customer_addresses
+WHERE id = p_address_id;
+
+-- If default, unset previous default first
+IF p_is_default THEN
+UPDATE customer_addresses
+SET is_default = false
+WHERE customer_id = v_customer_id
+  AND address_type = v_address_type;
+END IF;
+
+    -- Update the address
+UPDATE customer_addresses
+SET street = p_street,
+    city = p_city,
+    state = p_state,
+    postal_code = p_postal_code,
+    country = p_country,
+    is_default = p_is_default
+WHERE id = p_address_id;
+END;
+$$ LANGUAGE plpgsql;
+
+
+
+
+
+
+
+-- Edit Customer (update contact, customer info incl. password, and optionally address)
+CREATE OR REPLACE FUNCTION edit_customer(
+    p_customer_id INTEGER,
+    p_first_name TEXT,
+    p_last_name TEXT,
+    p_email TEXT,
+    p_phone TEXT,
+    p_password_hash TEXT DEFAULT NULL
+) RETURNS VOID AS $$
+DECLARE
+v_contact_id INTEGER;
+BEGIN
+    -- Get the contact_id associated with the customer
+SELECT contact_id INTO v_contact_id
+FROM customers
+WHERE id = p_customer_id;
+
+-- Update contact info
+UPDATE contacts
+SET email = p_email,
+    phone = p_phone
+WHERE id = v_contact_id;
+
+-- Update customer info
+IF p_password_hash IS NOT NULL THEN
+UPDATE customers
+SET first_name = p_first_name,
+    last_name = p_last_name,
+    password_hash = p_password_hash
+WHERE id = p_customer_id;
+ELSE
+UPDATE customers
+SET first_name = p_first_name,
+    last_name = p_last_name
+WHERE id = p_customer_id;
+END IF;
+END;
+$$ LANGUAGE plpgsql;
+
