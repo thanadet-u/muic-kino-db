@@ -2,6 +2,7 @@
 DROP TABLE IF EXISTS order_details CASCADE;
 DROP TABLE IF EXISTS orders CASCADE;
 DROP TABLE IF EXISTS inventory CASCADE;
+DROP TABLE IF EXISTS shopping_cart_items CASCADE;
 DROP TABLE IF EXISTS memberships CASCADE;
 DROP TABLE IF EXISTS book_products CASCADE;
 DROP TABLE IF EXISTS non_book_products CASCADE;
@@ -12,10 +13,11 @@ DROP TABLE IF EXISTS categories CASCADE;
 DROP TABLE IF EXISTS brands CASCADE;
 DROP TABLE IF EXISTS authors CASCADE;
 DROP TABLE IF EXISTS publishers CASCADE;
+DROP TABLE IF EXISTS store_addresses CASCADE;
 DROP TABLE IF EXISTS stores CASCADE;
 DROP TABLE IF EXISTS customer_addresses CASCADE;
-DROP TABLE IF EXISTS store_addresses CASCADE;
 DROP TABLE IF EXISTS customers CASCADE;
+DROP TABLE IF EXISTS contacts CASCADE;
 
 -- Drop types
 DROP TYPE IF EXISTS product_type CASCADE;
@@ -29,15 +31,21 @@ CREATE TYPE order_status AS ENUM (
     'pending', 'processing', 'shipped', 'delivered', 'cancelled'
     );
 
+-- Create contacts table
+CREATE TABLE contacts (
+                          id SERIAL PRIMARY KEY,
+                          email VARCHAR(100) UNIQUE NOT NULL,
+                          phone VARCHAR(20)
+);
+
 -- Create customer table
 CREATE TABLE customers (
                            id SERIAL PRIMARY KEY,
                            first_name VARCHAR(50) NOT NULL,
                            last_name VARCHAR(50) NOT NULL,
-                           email VARCHAR(100) UNIQUE NOT NULL,
-                           phone VARCHAR(20),
-                           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                           contact_id INTEGER REFERENCES contacts(id)
 );
+
 
 -- Customer address table
 CREATE TABLE customer_addresses (
@@ -55,7 +63,7 @@ CREATE TABLE customer_addresses (
 CREATE TABLE stores (
                         id SERIAL PRIMARY KEY,
                         name VARCHAR(100) NOT NULL,
-                        phone VARCHAR(20)
+                        contact_id INTEGER REFERENCES contacts(id)
 );
 
 -- Store address table
@@ -69,6 +77,14 @@ CREATE TABLE store_addresses (
                                  country VARCHAR(50) NOT NULL
 );
 
+-- Publishers
+CREATE TABLE publishers (
+                            id SERIAL PRIMARY KEY,
+                            name VARCHAR(100) NOT NULL,
+                            contact_id INTEGER REFERENCES contacts(id)
+);
+
+-- Memberships
 CREATE TABLE memberships (
                              id SERIAL PRIMARY KEY,
                              customer_id INTEGER NOT NULL REFERENCES customers(id),
@@ -79,29 +95,28 @@ CREATE TABLE memberships (
                              discount_percentage NUMERIC(5,2) CHECK (discount_percentage BETWEEN 0 AND 100)
 );
 
+-- Categories
 CREATE TABLE categories (
                             id SERIAL PRIMARY KEY,
                             name VARCHAR(50) NOT NULL,
                             parent_id INTEGER REFERENCES categories(id)
 );
 
+-- Brands
 CREATE TABLE brands (
                         id SERIAL PRIMARY KEY,
                         name VARCHAR(50) NOT NULL,
                         country VARCHAR(50)
 );
 
+-- Authors
 CREATE TABLE authors (
                          id SERIAL PRIMARY KEY,
                          first_name VARCHAR(50) NOT NULL,
                          last_name VARCHAR(50) NOT NULL
 );
 
-CREATE TABLE publishers (
-                            id SERIAL PRIMARY KEY,
-                            name VARCHAR(100) NOT NULL
-);
-
+-- Products
 CREATE TABLE products (
                           id SERIAL PRIMARY KEY,
                           sku VARCHAR(20) UNIQUE NOT NULL,
@@ -127,6 +142,16 @@ CREATE TABLE non_book_products (
                                    specifications JSONB
 );
 
+-- Shopping cart
+CREATE TABLE shopping_cart_items (
+                                     id SERIAL PRIMARY KEY,
+                                     customer_id INTEGER NOT NULL REFERENCES customers(id),
+                                     product_id INTEGER NOT NULL REFERENCES products(id),
+                                     quantity INTEGER NOT NULL CHECK (quantity > 0),
+                                     UNIQUE (customer_id, product_id)
+);
+
+-- Discounts
 CREATE TABLE discounts (
                            id SERIAL PRIMARY KEY,
                            name VARCHAR(100) NOT NULL,
@@ -146,14 +171,46 @@ CREATE TABLE product_discounts (
                                    UNIQUE (product_id, discount_id)
 );
 
+-- Inventory
 CREATE TABLE inventory (
                            id SERIAL PRIMARY KEY,
                            store_id INTEGER NOT NULL REFERENCES stores(id),
                            product_id INTEGER NOT NULL REFERENCES products(id),
                            quantity INTEGER NOT NULL CHECK (quantity >= 0),
+                           restock_threshold INTEGER NOT NULL CHECK (restock_threshold >= 0),
+
                            UNIQUE (store_id, product_id)
 );
 
+
+CREATE TABLE restocks (
+                          id SERIAL PRIMARY KEY,
+                          store_id INTEGER NOT NULL,
+                          product_id INTEGER NOT NULL,
+                          quantity INTEGER NOT NULL CHECK (quantity > 0),
+                          restock_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                          restocked_by VARCHAR(100),
+                          notes TEXT,
+                          FOREIGN KEY (store_id, product_id)
+                              REFERENCES inventory(store_id, product_id)
+                              ON DELETE CASCADE
+);
+
+
+-- Alerts For Restock
+CREATE TABLE restock_alerts (
+                                id SERIAL PRIMARY KEY,
+                                inventory_id INTEGER NOT NULL REFERENCES inventory(id) ON DELETE CASCADE,
+                                product_id INTEGER NOT NULL REFERENCES products(id),
+                                store_id INTEGER NOT NULL REFERENCES stores(id),
+                                quantity INTEGER NOT NULL,
+                                restock_threshold INTEGER NOT NULL,
+                                alert_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                alert_message TEXT
+);
+
+
+-- Orders
 CREATE TABLE orders (
                         id SERIAL PRIMARY KEY,
                         customer_id INTEGER NOT NULL REFERENCES customers(id),
@@ -164,6 +221,7 @@ CREATE TABLE orders (
                         transaction_id VARCHAR(100) UNIQUE
 );
 
+-- Order details
 CREATE TABLE order_details (
                                id SERIAL PRIMARY KEY,
                                order_id INTEGER NOT NULL REFERENCES orders(id),
@@ -174,7 +232,7 @@ CREATE TABLE order_details (
 );
 
 -- Create indexes
-CREATE INDEX idx_customers_email ON customers(email);
+CREATE INDEX idx_customers_email ON contacts(email);
 CREATE INDEX idx_products_name ON products(name);
 CREATE INDEX idx_orders_customer ON orders(customer_id);
 CREATE INDEX idx_inventory_product ON inventory(product_id);
