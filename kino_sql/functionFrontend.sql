@@ -237,16 +237,15 @@ $$ LANGUAGE plpgsql;
 ----------
 
 CREATE OR REPLACE FUNCTION check_availability(p_product_id INT)
-    RETURNS INTEGER LANGUAGE plpgsql AS $$
-DECLARE
-    total_qty INT;
-BEGIN
-    SELECT COALESCE(SUM(quantity),0)
-    INTO total_qty
-    FROM inventory
-    WHERE product_id = p_product_id;
-    RETURN total_qty;
-END;
+    RETURNS TABLE(store_id INT, store_name TEXT, quantity INT) LANGUAGE sql AS $$
+SELECT
+    i.store_id,
+    s.name AS store_name,
+    i.quantity
+FROM inventory i
+         JOIN stores s ON i.store_id = s.id
+WHERE i.product_id = p_product_id
+  AND i.quantity > 0;
 $$;
 
 
@@ -273,15 +272,10 @@ BEGIN
     INTO valid
     FROM memberships
     WHERE id = p_membership_id;
-    RAISE NOTICE 'Checking membership ID: %, valid: %', p_membership_id, valid;
     RETURN COALESCE(valid, false);
 END;
 $$;
 
-CREATE OR REPLACE FUNCTION apply_promo_code(
-    p_customer_id INT,
-    p_discount_id INT
-)
     RETURNS VOID LANGUAGE plpgsql AS $$
 BEGIN
     INSERT INTO product_discounts(product_id, discount_id)
@@ -377,4 +371,31 @@ $$;
 CREATE OR REPLACE FUNCTION list_category()
     RETURNS SETOF categories LANGUAGE sql AS $$
 SELECT * FROM categories;
+$$;
+
+
+CREATE OR REPLACE FUNCTION list_category()
+    RETURNS SETOF categories LANGUAGE sql AS $$
+SELECT * FROM categories;
+$$;
+
+CREATE OR REPLACE FUNCTION list_book_categories()
+    RETURNS TABLE(sub_category_id INT, sub_category_name TEXT, category_name TEXT) LANGUAGE sql AS $$
+SELECT sc.id, sc.name, c.name
+FROM sub_categories sc
+         JOIN categories c ON sc.category_id = c.id;
+$$;
+
+CREATE OR REPLACE FUNCTION list_book_category_by_language(p_language TEXT)
+    RETURNS TABLE(sub_category_id INT, sub_category_name TEXT, category_name TEXT) LANGUAGE sql AS $$
+SELECT DISTINCT sc.id, sc.name, c.name
+FROM book_products bp
+         JOIN sub_categories sc ON bp.sub_category_id = sc.id
+         JOIN categories c ON sc.category_id = c.id
+WHERE bp.language = p_language;
+$$;
+
+CREATE OR REPLACE FUNCTION search_book_by_language(p_language TEXT)
+    RETURNS SETOF book_products LANGUAGE sql AS $$
+SELECT * FROM book_products WHERE language = p_language;
 $$;
