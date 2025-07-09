@@ -4,8 +4,6 @@ DROP TABLE IF EXISTS orders CASCADE;
 DROP TABLE IF EXISTS restock_alerts CASCADE;
 DROP TABLE IF EXISTS restocks CASCADE;
 DROP TABLE IF EXISTS inventory CASCADE;
-DROP TABLE IF EXISTS restocks CASCADE;
-DROP TABLE IF EXISTS restock_alerts CASCADE;
 DROP TABLE IF EXISTS shopping_cart_items CASCADE;
 DROP TABLE IF EXISTS memberships CASCADE;
 DROP TABLE IF EXISTS book_products CASCADE;
@@ -13,6 +11,7 @@ DROP TABLE IF EXISTS non_book_products CASCADE;
 DROP TABLE IF EXISTS product_discounts CASCADE;
 DROP TABLE IF EXISTS products CASCADE;
 DROP TABLE IF EXISTS discounts CASCADE;
+DROP TABLE IF EXISTS sub_categories CASCADE;
 DROP TABLE IF EXISTS categories CASCADE;
 DROP TABLE IF EXISTS brands CASCADE;
 DROP TABLE IF EXISTS authors CASCADE;
@@ -22,17 +21,18 @@ DROP TABLE IF EXISTS stores CASCADE;
 DROP TABLE IF EXISTS customer_addresses CASCADE;
 DROP TABLE IF EXISTS customers CASCADE;
 DROP TABLE IF EXISTS contacts CASCADE;
-DROP TABLE IF EXISTS book_products CASCADE;
 
 -- Drop ENUM types
 DROP TYPE IF EXISTS product_type CASCADE;
 DROP TYPE IF EXISTS discount_type CASCADE;
 DROP TYPE IF EXISTS order_status CASCADE;
+DROP TYPE IF EXISTS book_language CASCADE;
 
 -- Create ENUM types
 CREATE TYPE product_type AS ENUM ('book', 'stationery', 'merch');
 CREATE TYPE discount_type AS ENUM ('percentage', 'fixed');
 CREATE TYPE order_status AS ENUM ('pending', 'processing', 'shipped', 'delivered', 'cancelled');
+CREATE TYPE book_language AS ENUM ('English', 'Japanese', 'Chinese', 'Thai');
 
 -- Contacts Table
 CREATE TABLE contacts (
@@ -106,8 +106,14 @@ CREATE TABLE memberships (
 -- Categories Table
 CREATE TABLE categories (
                             id SERIAL PRIMARY KEY,
-                            name VARCHAR(50) NOT NULL,
-                            parent_id INTEGER REFERENCES categories(id)
+                            name VARCHAR(50) NOT NULL
+);
+
+-- Sub-Categories Table
+CREATE TABLE sub_categories (
+                                id SERIAL PRIMARY KEY,
+                                name VARCHAR(50) NOT NULL,
+                                category_id INTEGER NOT NULL REFERENCES categories(id)
 );
 
 -- Brands Table
@@ -132,7 +138,6 @@ CREATE TABLE products (
                           description TEXT,
                           product_type product_type NOT NULL,
                           base_price NUMERIC(10,2) NOT NULL CHECK (base_price >= 0),
-                          category_id INTEGER REFERENCES categories(id),
                           brand_id INTEGER REFERENCES brands(id)
 );
 
@@ -142,7 +147,9 @@ CREATE TABLE book_products (
                                isbn CHAR(13) UNIQUE NOT NULL CHECK (LENGTH(isbn) = 13),
                                author_id INTEGER NOT NULL REFERENCES authors(id),
                                publisher_id INTEGER NOT NULL REFERENCES publishers(id),
-                               publication_date DATE
+                               publication_date DATE,
+                               sub_category_id INTEGER REFERENCES sub_categories(id),
+                               language VARCHAR(50) NOT NULL
 );
 
 -- Non-Book Products Table

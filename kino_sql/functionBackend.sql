@@ -1,3 +1,4 @@
+
 -- ================================================
 -- SQL Functions to Insert Core Entities
 -- Schema: Bookstore / Retail System
@@ -143,7 +144,7 @@ $$ LANGUAGE plpgsql;
 -- INSERT FUNCTIONS FOR MAIN ENTITIES
 -- ===========================================
 
--- 1. Add a new customer with contact and address
+-- Add a new customer with contact and address
 CREATE OR REPLACE FUNCTION add_customer(
     p_first_name TEXT,
     p_last_name TEXT,
@@ -177,7 +178,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- 2. Add a new store with contact and address
+-- Add a new store with contact and address
 CREATE OR REPLACE FUNCTION add_store(
     p_name TEXT,
     p_email TEXT,
@@ -226,7 +227,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- 4. Add an author
+-- . Add an author
 CREATE OR REPLACE FUNCTION add_author(
     p_first_name TEXT,
     p_last_name TEXT
@@ -241,60 +242,11 @@ $$ LANGUAGE plpgsql;
 -- CORE FUNCTIONALITY FUNCTIONS
 -- ===========================================
 
--- 5. Add item to shopping cart
-CREATE OR REPLACE FUNCTION add_to_cart(
-    p_customer_id INTEGER,
-    p_product_id INTEGER,
-    p_quantity INTEGER
-) RETURNS VOID AS $$
-BEGIN
-    INSERT INTO shopping_cart_items (customer_id, product_id, quantity)
-    VALUES (p_customer_id, p_product_id, p_quantity)
-    ON CONFLICT (customer_id, product_id)
-        DO UPDATE SET quantity = shopping_cart_items.quantity + EXCLUDED.quantity;
-END;
-$$ LANGUAGE plpgsql;
-
--- 6. Place an order
-CREATE OR REPLACE FUNCTION place_order(
-    p_customer_id INTEGER,
-    p_store_id INTEGER,
-    p_payment_method TEXT,
-    p_transaction_id TEXT
-) RETURNS INTEGER AS $$
-DECLARE
-    v_order_id INTEGER;
-BEGIN
-    INSERT INTO orders (customer_id, store_id, payment_method, transaction_id)
-    VALUES (p_customer_id, p_store_id, p_payment_method, p_transaction_id)
-    RETURNING id INTO v_order_id;
-
-    -- Assume order details and cart handling are done outside this function
-    RETURN v_order_id;
-END;
-$$ LANGUAGE plpgsql;
-
--- 7. Restock inventory
-CREATE OR REPLACE FUNCTION restock_inventory(
-    p_store_id INTEGER,
-    p_product_id INTEGER,
-    p_quantity INTEGER,
-    p_restocked_by TEXT,
-    p_notes TEXT DEFAULT NULL
-) RETURNS VOID AS $$
-BEGIN
-    INSERT INTO restocks (store_id, product_id, quantity, restocked_by, notes)
-    VALUES (p_store_id, p_product_id, p_quantity, p_restocked_by, p_notes);
-
-    UPDATE inventory
-    SET quantity = quantity + p_quantity
-    WHERE store_id = p_store_id AND product_id = p_product_id;
-END;
-$$ LANGUAGE plpgsql;
 
 
 
---8 Create Order From Shopping Cart
+
+-- Create Order From Shopping Cart
 
 CREATE OR REPLACE FUNCTION create_order_from_cart(p_customer_id INTEGER)
     RETURNS INTEGER AS $$
@@ -333,4 +285,77 @@ BEGIN
     RETURN v_order_id;
 END;
 $$ LANGUAGE plpgsql;
+
+
+CREATE TYPE book_language AS ENUM ('English', 'Japanese', 'Chinese', 'Thai');
+
+
+
+
+-- Add Product / Non-Product
+
+
+
+CREATE OR REPLACE FUNCTION add_book_product(
+    p_sku VARCHAR,
+    p_name VARCHAR,
+    p_description TEXT,
+    p_base_price NUMERIC,
+    p_brand_id INTEGER,
+    p_isbn CHAR(13),
+    p_author_id INTEGER,
+    p_publisher_id INTEGER,
+    p_pub_date DATE,
+    p_language VARCHAR,
+    p_sub_category_id INTEGER
+)
+    RETURNS VOID AS $$
+DECLARE
+    new_product_id INTEGER;
+BEGIN
+    -- Step 1: Insert into products
+    INSERT INTO products (sku, name, description, product_type, base_price, brand_id)
+    VALUES (p_sku, p_name, p_description, 'book', p_base_price, p_brand_id)
+    RETURNING id INTO new_product_id;
+
+    -- Step 2: Insert into book_products
+    INSERT INTO book_products (
+        product_id, isbn, author_id, publisher_id, publication_date, sub_category_id, language
+    )
+    VALUES (
+               new_product_id, p_isbn, p_author_id, p_publisher_id, p_pub_date, p_sub_category_id, p_language
+           );
+END;
+$$ LANGUAGE plpgsql;
+
+
+
+CREATE OR REPLACE FUNCTION add_non_book_product(
+    p_sku VARCHAR,
+    p_name VARCHAR,
+    p_description TEXT,
+    p_base_price NUMERIC,
+    p_brand_id INTEGER,
+    p_item_type VARCHAR,
+    p_specifications JSONB
+)
+    RETURNS VOID AS $$
+DECLARE
+    new_product_id INTEGER;
+BEGIN
+    -- Step 1: Insert into products
+    INSERT INTO products (sku, name, description, product_type, base_price, brand_id)
+    VALUES (p_sku, p_name, p_description, 'stationery', p_base_price, p_brand_id)
+    RETURNING id INTO new_product_id;
+
+    -- Step 2: Insert into non_book_products
+    INSERT INTO non_book_products (
+        product_id, item_type, specifications
+    )
+    VALUES (
+               new_product_id, p_item_type, p_specifications
+           );
+END;
+$$ LANGUAGE plpgsql;
+
 
