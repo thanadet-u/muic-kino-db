@@ -36,9 +36,73 @@ WHERE customer_id = p_customer_id;
 END;
 $$ LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION get_cart_items(p_customer_id INT)
+    RETURNS TABLE (
+        product_id INT,
+        sku VARCHAR,
+        name VARCHAR,
+        quantity INT,
+        unit_price NUMERIC,
+        total_price NUMERIC,
+        discount_applied BOOLEAN
+    ) AS $$
+BEGIN
+    RETURN QUERY
+        SELECT
+            p.id,
+            p.sku,
+            p.name,
+            sci.quantity,
+            COALESCE(pd.final_price, p.base_price) AS unit_price,
+            COALESCE(pd.final_price, p.base_price) * sci.quantity AS total_price,
+            (pd.final_price IS NOT NULL AND d.is_active) AS discount_applied
+        FROM shopping_cart_items sci
+        JOIN products p ON p.id = sci.product_id
+        LEFT JOIN product_discounts pd ON pd.product_id = p.id
+        LEFT JOIN discounts d ON pd.discount_id = d.id AND d.is_active = true
+        WHERE sci.customer_id = p_customer_id;
+END;
+$$ LANGUAGE plpgsql;
 
 
+CREATE OR REPLACE FUNCTION calculate_cart_total(p_customer_id INT)
+    RETURNS NUMERIC AS $$
+DECLARE
+    v_total NUMERIC := 0;
+BEGIN
+    SELECT
+        SUM(sci.quantity * COALESCE(pd.final_price, p.base_price))
+    INTO v_total
+    FROM shopping_cart_items sci
+             JOIN products p ON sci.product_id = p.id
+             LEFT JOIN product_discounts pd ON pd.product_id = p.id
+    WHERE sci.customer_id = p_customer_id;
 
+    RETURN COALESCE(ROUND(v_total, 2), 0);
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION apply_promo_code(
+    p_customer_id INT,
+    p_discount_id INT
+) RETURNS VOID AS $$
+BEGIN
+    -- Ensure discount is active
+    IF NOT EXISTS (
+        SELECT 1 FROM discounts
+        WHERE id = p_discount_id AND is_active = TRUE
+    ) THEN
+        RAISE EXCEPTION 'Discount code % is not active or does not exist.', p_discount_id;
+    END IF;
+
+    -- Apply to all items in cart (ignore duplicates)
+    INSERT INTO product_discounts(product_id, discount_id)
+    SELECT sci.product_id, p_discount_id
+    FROM shopping_cart_items sci
+    WHERE sci.customer_id = p_customer_id
+    ON CONFLICT (product_id, discount_id) DO NOTHING;
+END;
+$$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION check_product_availabilities(
     p_customer_id INTEGER
