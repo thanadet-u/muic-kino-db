@@ -1,45 +1,38 @@
+-- 1. Drop existing trigger if any
 DROP TRIGGER IF EXISTS trg_restock_alert ON inventory;
 
+-- 2. Create the trigger function
 CREATE OR REPLACE FUNCTION trigger_restock_alert_and_restock()
     RETURNS TRIGGER AS $$
 DECLARE
-v_restock_qty INTEGER := 20;
+    v_restock_qty INTEGER := 20;
 BEGIN
     IF NEW.quantity < NEW.restock_threshold THEN
-        -- Insert restock alert
+        -- Log trigger firing
+        RAISE NOTICE 'Trigger fired: quantity (NEW.%) < threshold (NEW.%)', NEW.quantity, NEW.restock_threshold;
+
+        -- Insert alert
         INSERT INTO restock_alerts (
-            inventory_id,
-            product_id,
-            store_id,
-            quantity,
-            restock_threshold,
-            alert_message
+            inventory_id, product_id, store_id, quantity, restock_threshold, alert_message
         )
         VALUES (
-            NEW.id,
-            NEW.product_id,
-            NEW.store_id,
-            NEW.quantity,
-            NEW.restock_threshold,
-            'Stock below restock threshold.'
-        );
+                   NEW.id, NEW.product_id, NEW.store_id, NEW.quantity,
+                   NEW.restock_threshold, 'Stock below restock threshold.'
+               );
 
-        -- Immediately restock
+        -- Perform restock
+        RAISE NOTICE 'Trigger performing restock of % units for inventory_id = %', v_restock_qty, NEW.id;
+
         PERFORM create_restock(
-            NEW.id,
-            v_restock_qty,
-            'system',
-            'Auto restock triggered by low inventory'
-        );
-END IF;
+                NEW.id, v_restock_qty, 'system', 'Auto restock triggered by low inventory'
+                );
+    END IF;
 
-RETURN NEW;
+    RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
-
-
-
+-- 3. Attach the trigger
 CREATE TRIGGER trg_restock_alert
     AFTER UPDATE ON inventory
     FOR EACH ROW
