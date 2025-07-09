@@ -4,7 +4,32 @@ CREATE OR REPLACE FUNCTION add_to_cart(
     p_product_id INTEGER,
     p_quantity INTEGER
 ) RETURNS VOID AS $$
+DECLARE
+v_current_cart_qty INTEGER := 0;
+    v_total_inventory_qty INTEGER := 0;
 BEGIN
+    -- Get current quantity in cart for this product
+SELECT quantity
+INTO v_current_cart_qty
+FROM shopping_cart_items
+WHERE customer_id = p_customer_id AND product_id = p_product_id;
+
+IF NOT FOUND THEN
+        v_current_cart_qty := 0;
+END IF;
+
+    -- Get total inventory available for this product across all stores
+SELECT COALESCE(SUM(quantity), 0)
+INTO v_total_inventory_qty
+FROM inventory
+WHERE product_id = p_product_id AND quantity > 0;
+
+-- Check if requested amount would exceed available stock
+IF (v_current_cart_qty + p_quantity) > v_total_inventory_qty THEN
+        RAISE EXCEPTION 'Cannot add to cart. Requested quantity exceeds available inventory.';
+END IF;
+
+    -- Insert or update cart
 INSERT INTO shopping_cart_items (customer_id, product_id, quantity)
 VALUES (p_customer_id, p_product_id, p_quantity)
     ON CONFLICT (customer_id, product_id)
@@ -14,49 +39,65 @@ $$ LANGUAGE plpgsql;
 
 
 
--- 6. Place an order
-CREATE OR REPLACE FUNCTION place_order(
+CREATE OR REPLACE FUNCTION remove_item_from_cart(
     p_customer_id INTEGER,
-    p_store_id INTEGER,
-    p_payment_method TEXT,
-    p_transaction_id TEXT
-) RETURNS INTEGER AS $$
-DECLARE
-v_order_id INTEGER;
-BEGIN
-INSERT INTO orders (customer_id, store_id, payment_method, transaction_id)
-VALUES (p_customer_id, p_store_id, p_payment_method, p_transaction_id)
-    RETURNING id INTO v_order_id;
-
--- Assume order details and cart handling are done outside this function
-RETURN v_order_id;
-END;
-$$ LANGUAGE plpgsql;
-
-
-
-
-
--- Restock inventory
-CREATE OR REPLACE FUNCTION restock_inventory(
-    p_store_id INTEGER,
-    p_product_id INTEGER,
-    p_quantity INTEGER,
-    p_restocked_by TEXT,
-    p_notes TEXT DEFAULT NULL
+    p_product_id INTEGER
 ) RETURNS VOID AS $$
 BEGIN
-INSERT INTO restocks (store_id, product_id, quantity, restocked_by, notes)
-VALUES (p_store_id, p_product_id, p_quantity, p_restocked_by, p_notes);
-
-UPDATE inventory
-SET quantity = quantity + p_quantity
-WHERE store_id = p_store_id AND product_id = p_product_id;
+DELETE FROM shopping_cart_items
+WHERE customer_id = p_customer_id AND product_id = p_product_id;
 END;
 $$ LANGUAGE plpgsql;
 
 
 
+
+CREATE OR REPLACE FUNCTION clear_cart(
+    p_customer_id INTEGER
+) RETURNS VOID AS $$
+BEGIN
+DELETE FROM shopping_cart_items
+WHERE customer_id = p_customer_id;
+END;
+$$ LANGUAGE plpgsql;
+
+
+
+
+
+CREATE OR REPLACE FUNCTION check_product_availabilities(
+    p_customer_id INTEGER
+) RETURNS BOOLEAN AS $$
+DECLARE
+v_item RECORD;
+    v_store RECORD;
+    v_remaining_qty INTEGER;
+BEGIN
+FOR v_item IN
+SELECT product_id, quantity
+FROM shopping_cart_items
+WHERE customer_id = p_customer_id
+    LOOP
+        v_remaining_qty := v_item.quantity;
+
+FOR v_store IN
+SELECT quantity
+FROM inventory
+WHERE product_id = v_item.product_id AND quantity > 0
+ORDER BY quantity DESC
+    LOOP
+            EXIT WHEN v_remaining_qty <= 0;
+v_remaining_qty := v_remaining_qty - LEAST(v_remaining_qty, v_store.quantity);
+END LOOP;
+
+        IF v_remaining_qty > 0 THEN
+            RETURN FALSE; -- Cannot fulfill this item
+END IF;
+END LOOP;
+
+RETURN TRUE;
+END;
+$$ LANGUAGE plpgsql;
 
 
 
@@ -236,18 +277,6 @@ $$ LANGUAGE plpgsql;
 
 ----------
 
-CREATE OR REPLACE FUNCTION check_availability(p_product_id INT)
-    RETURNS INTEGER LANGUAGE plpgsql AS $$
-DECLARE
-    total_qty INT;
-BEGIN
-    SELECT COALESCE(SUM(quantity),0)
-    INTO total_qty
-    FROM inventory
-    WHERE product_id = p_product_id;
-    RETURN total_qty;
-END;
-$$;
 
 
 -- 2. Product detail reader

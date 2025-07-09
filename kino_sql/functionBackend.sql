@@ -19,9 +19,9 @@ CREATE OR REPLACE FUNCTION add_customer(
     p_state VARCHAR,
     p_postal_code VARCHAR,
     p_country VARCHAR,
+    p_password_hash VARCHAR DEFAULT NULL,
     p_address_type VARCHAR DEFAULT 'shipping',
-    p_is_default BOOLEAN DEFAULT TRUE,
-    p_password_hash VARCHAR
+    p_is_default BOOLEAN DEFAULT TRUE
 )
 RETURNS INTEGER AS $$
 DECLARE
@@ -630,33 +630,39 @@ $$ LANGUAGE plpgsql;
 -- ================================================
 
 
-
 CREATE OR REPLACE FUNCTION check_product_availabilities(
     p_customer_id INTEGER
 ) RETURNS BOOLEAN AS $$
 DECLARE
     v_item RECORD;
-    v_total_available INTEGER;
+    v_store RECORD;
+    v_remaining_qty INTEGER;
 BEGIN
     FOR v_item IN
-        SELECT sci.product_id, sci.quantity
-        FROM shopping_cart_items sci
-        WHERE sci.customer_id = p_customer_id
+        SELECT product_id, quantity
+        FROM shopping_cart_items
+        WHERE customer_id = p_customer_id
         LOOP
-            SELECT COALESCE(SUM(quantity), 0)
-            INTO v_total_available
-            FROM inventory
-            WHERE product_id = v_item.product_id AND quantity > 0;
+            v_remaining_qty := v_item.quantity;
 
-            IF v_total_available < v_item.quantity THEN
-                RETURN FALSE; -- Not enough stock
+            FOR v_store IN
+                SELECT quantity
+                FROM inventory
+                WHERE product_id = v_item.product_id AND quantity > 0
+                ORDER BY quantity DESC
+                LOOP
+                    EXIT WHEN v_remaining_qty <= 0;
+                    v_remaining_qty := v_remaining_qty - LEAST(v_remaining_qty, v_store.quantity);
+                END LOOP;
+
+            IF v_remaining_qty > 0 THEN
+                RETURN FALSE; -- Cannot fulfill this item
             END IF;
         END LOOP;
 
-    RETURN TRUE; -- All products can be fulfilled
+    RETURN TRUE;
 END;
 $$ LANGUAGE plpgsql;
-
 
 
 
