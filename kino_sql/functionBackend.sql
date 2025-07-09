@@ -695,6 +695,24 @@ $$ LANGUAGE plpgsql;
 
 
 
+CREATE OR REPLACE FUNCTION check_membership(p_customer_id INTEGER)
+    RETURNS BOOLEAN AS $$
+DECLARE
+    v_valid BOOLEAN;
+BEGIN
+    SELECT expiry_date > CURRENT_DATE
+    INTO v_valid
+    FROM memberships
+    WHERE customer_id = p_customer_id
+    LIMIT 1;
+
+    RETURN COALESCE(v_valid, FALSE);
+END;
+$$ LANGUAGE plpgsql;
+
+
+
+
 CREATE OR REPLACE FUNCTION place_order(
     p_customer_id INTEGER,
     p_status order_status,
@@ -717,6 +735,10 @@ BEGIN
 
     -- Calculate total price
     v_total_price := calculate_order_total(p_customer_id);
+
+    IF check_membership(p_customer_id) THEN
+        v_total_price := v_total_price * 0.9;
+    END IF;
 
     -- Create the order
     INSERT INTO orders (customer_id, status, payment_method, transaction_id, total_price)

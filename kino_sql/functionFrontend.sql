@@ -14,6 +14,32 @@ $$ LANGUAGE plpgsql;
 
 
 
+CREATE OR REPLACE FUNCTION edit_cart_item_quantity(
+    p_customer_id INTEGER,
+    p_product_id INTEGER,
+    p_new_quantity INTEGER
+) RETURNS VOID AS $$
+BEGIN
+    IF p_new_quantity > 0 THEN
+        UPDATE shopping_cart_items
+        SET quantity = p_new_quantity
+        WHERE customer_id = p_customer_id AND product_id = p_product_id;
+
+        IF NOT FOUND THEN
+            RAISE NOTICE 'Item not found in cart, nothing updated.';
+        END IF;
+    ELSE
+        -- Delete if quantity is zero or less
+        DELETE FROM shopping_cart_items
+        WHERE customer_id = p_customer_id AND product_id = p_product_id;
+
+        RAISE NOTICE 'Quantity was zero or less, item removed from cart.';
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+
+
 CREATE OR REPLACE FUNCTION remove_item_from_cart(
     p_customer_id INTEGER,
     p_product_id INTEGER
