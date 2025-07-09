@@ -486,3 +486,28 @@ CREATE OR REPLACE FUNCTION search_book_by_language(p_language TEXT)
     RETURNS SETOF book_products LANGUAGE sql AS $$
 SELECT * FROM book_products WHERE language = p_language;
 $$;
+
+CREATE OR REPLACE FUNCTION search_products_by_name(p_title TEXT)
+    RETURNS TABLE (
+        product_id INT,
+        sku VARCHAR,
+        title TEXT,
+        product_type product_type,
+        brand_id INT,
+        base_price NUMERIC,
+        description TEXT
+    ) AS $$
+BEGIN
+    RETURN QUERY
+        SELECT
+            p.id,
+            p.sku,
+            p.name::TEXT,
+            p.product_type,
+            p.brand_id,
+            p.base_price,
+            p.description
+        FROM products p
+        WHERE p.name ILIKE '%' || p_title || '%';
+END;
+$$ LANGUAGE plpgsql;
