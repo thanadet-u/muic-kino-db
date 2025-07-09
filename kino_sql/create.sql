@@ -13,6 +13,8 @@ DROP TABLE IF EXISTS brands CASCADE;
 DROP TABLE IF EXISTS authors CASCADE;
 DROP TABLE IF EXISTS publishers CASCADE;
 DROP TABLE IF EXISTS stores CASCADE;
+DROP TABLE IF EXISTS customer_addresses CASCADE;
+DROP TABLE IF EXISTS store_addresses CASCADE;
 DROP TABLE IF EXISTS customers CASCADE;
 
 -- Drop types
@@ -27,15 +29,44 @@ CREATE TYPE order_status AS ENUM (
     'pending', 'processing', 'shipped', 'delivered', 'cancelled'
     );
 
--- Create tables
+-- Create customer table
 CREATE TABLE customers (
                            id SERIAL PRIMARY KEY,
                            first_name VARCHAR(50) NOT NULL,
                            last_name VARCHAR(50) NOT NULL,
                            email VARCHAR(100) UNIQUE NOT NULL,
                            phone VARCHAR(20),
-                           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                           shipping_address TEXT NOT NULL
+                           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Customer address table
+CREATE TABLE customer_addresses (
+                                    id SERIAL PRIMARY KEY,
+                                    customer_id INTEGER NOT NULL REFERENCES customers(id),
+                                    street TEXT NOT NULL,
+                                    city VARCHAR(50) NOT NULL,
+                                    state VARCHAR(50),
+                                    postal_code VARCHAR(20),
+                                    country VARCHAR(50) NOT NULL,
+                                    address_type VARCHAR(20) NOT NULL CHECK (address_type IN ('shipping', 'billing'))
+);
+
+-- Store table
+CREATE TABLE stores (
+                        id SERIAL PRIMARY KEY,
+                        name VARCHAR(100) NOT NULL,
+                        phone VARCHAR(20)
+);
+
+-- Store address table
+CREATE TABLE store_addresses (
+                                 id SERIAL PRIMARY KEY,
+                                 store_id INTEGER NOT NULL REFERENCES stores(id),
+                                 street TEXT NOT NULL,
+                                 city VARCHAR(50) NOT NULL,
+                                 state VARCHAR(50),
+                                 postal_code VARCHAR(20),
+                                 country VARCHAR(50) NOT NULL
 );
 
 CREATE TABLE memberships (
@@ -69,14 +100,6 @@ CREATE TABLE authors (
 CREATE TABLE publishers (
                             id SERIAL PRIMARY KEY,
                             name VARCHAR(100) NOT NULL
-);
-
-CREATE TABLE stores (
-                        id SERIAL PRIMARY KEY,
-                        name VARCHAR(100) NOT NULL,
-                        address TEXT NOT NULL,
-                        city VARCHAR(50) NOT NULL,
-                        phone VARCHAR(20)
 );
 
 CREATE TABLE products (
