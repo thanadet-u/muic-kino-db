@@ -234,3 +234,147 @@ END IF;
 END;
 $$ LANGUAGE plpgsql;
 
+----------
+
+CREATE OR REPLACE FUNCTION check_availability(p_product_id INT)
+    RETURNS INTEGER LANGUAGE plpgsql AS $$
+DECLARE
+    total_qty INT;
+BEGIN
+    SELECT COALESCE(SUM(quantity),0)
+    INTO total_qty
+    FROM inventory
+    WHERE product_id = p_product_id;
+    RETURN total_qty;
+END;
+$$;
+
+
+-- 2. Product detail reader
+CREATE OR REPLACE FUNCTION read_product_detail(p_product_id INT)
+    RETURNS JSONB LANGUAGE plpgsql AS $$
+DECLARE
+    result JSONB;
+BEGIN
+    SELECT to_jsonb(p.*)
+    INTO result
+    FROM products p
+    WHERE p.id = p_product_id;
+    RETURN result;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION check_membership(p_membership_id INT)
+    RETURNS BOOLEAN LANGUAGE plpgsql AS $$
+DECLARE
+    valid BOOLEAN;
+BEGIN
+    SELECT (expiry_date >= CURRENT_DATE)
+    INTO valid
+    FROM memberships
+    WHERE id = p_membership_id;
+    RAISE NOTICE 'Checking membership ID: %, valid: %', p_membership_id, valid;
+    RETURN COALESCE(valid, false);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION apply_promo_code(
+    p_customer_id INT,
+    p_discount_id INT
+)
+    RETURNS VOID LANGUAGE plpgsql AS $$
+BEGIN
+    INSERT INTO product_discounts(product_id, discount_id)
+    SELECT sci.product_id, p_discount_id
+    FROM shopping_cart_items sci
+    WHERE sci.customer_id = p_customer_id
+    ON CONFLICT DO NOTHING;
+END;
+$$;
+
+
+-- 6. Product searches
+CREATE OR REPLACE FUNCTION search_products_by_isbn(p_isbn CHAR)
+    RETURNS SETOF book_products LANGUAGE sql AS $$
+SELECT * FROM book_products WHERE isbn = $1;
+$$;
+
+CREATE OR REPLACE FUNCTION search_products_advanced(
+    p_title         TEXT DEFAULT NULL,
+    p_category_id   INT DEFAULT NULL,
+    p_author_id     INT DEFAULT NULL,
+    p_publisher_id  INT DEFAULT NULL,
+    p_from_year     INT DEFAULT NULL,
+    p_from_month    INT DEFAULT NULL,
+    p_to_year       INT DEFAULT NULL,
+    p_to_month      INT DEFAULT NULL
+)
+    RETURNS TABLE (
+                      product_id     INT,
+                      sku            VARCHAR,
+                      title          VARCHAR,
+                      author_id      INT,
+                      publisher_id   INT,
+                      category_id    INT,
+                      publication_date DATE,
+                      available_qty  INT
+                  ) LANGUAGE plpgsql AS $$
+BEGIN
+    RETURN QUERY
+        SELECT
+            p.id,
+            p.sku,
+            p.name,
+            bp.author_id,
+            bp.publisher_id,
+            sc.category_id,
+            bp.publication_date,
+            SUM(i.quantity)::INTEGER AS available_qty
+        FROM products p
+                 JOIN book_products bp ON bp.product_id = p.id
+                 JOIN sub_categories sc ON sc.id = bp.sub_category_id
+                 JOIN inventory i ON i.product_id = p.id
+        WHERE (p_title IS NULL OR p.name ILIKE '%' || p_title || '%')
+          AND (p_category_id IS NULL OR sc.category_id = p_category_id)
+          AND (p_author_id IS NULL OR bp.author_id = p_author_id)
+          AND (p_publisher_id IS NULL OR bp.publisher_id = p_publisher_id)
+          AND (
+            (p_from_year IS NULL AND p_to_year IS NULL)
+                OR (
+                bp.publication_date >= make_date(COALESCE(p_from_year, 1), COALESCE(p_from_month, 1), 1)
+                    AND bp.publication_date <  make_date(COALESCE(p_to_year, 9999), COALESCE(p_to_month, 12), 1) + INTERVAL '1 month'
+                )
+            )
+        GROUP BY p.id, bp.author_id, bp.publisher_id, sc.category_id, bp.publication_date
+        HAVING SUM(i.quantity) > 0;
+END;
+$$;
+
+
+CREATE OR REPLACE FUNCTION search_books_category(p_category_id INT)
+    RETURNS SETOF book_products LANGUAGE sql AS $$
+SELECT bp.*
+FROM book_products bp
+         JOIN sub_categories sc ON sc.id = bp.sub_category_id
+WHERE sc.category_id = p_category_id;
+$$;
+
+CREATE OR REPLACE FUNCTION filter_product(
+    p_type       product_type,
+    p_subcat_id  INT DEFAULT NULL,
+    p_publisher  INT DEFAULT NULL
+)
+    RETURNS SETOF products LANGUAGE sql AS $$
+SELECT *
+FROM products p
+WHERE p.product_type = p_type
+  AND (p_subcat_id IS NULL OR p.id IN (
+    SELECT product_id FROM book_products WHERE sub_category_id = p_subcat_id))
+  AND (p_publisher IS NULL OR p.id IN (
+    SELECT product_id FROM book_products WHERE publisher_id = p_publisher));
+$$;
+
+CREATE OR REPLACE FUNCTION list_category()
+    RETURNS SETOF categories LANGUAGE sql AS $$
+SELECT * FROM categories;
+$$;
