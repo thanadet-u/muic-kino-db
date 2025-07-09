@@ -12,6 +12,8 @@ VALUES (p_customer_id, p_product_id, p_quantity)
 END;
 $$ LANGUAGE plpgsql;
 
+
+
 -- 6. Place an order
 CREATE OR REPLACE FUNCTION place_order(
     p_customer_id INTEGER,
@@ -183,6 +185,9 @@ SET street = p_street,
 WHERE id = p_address_id;
 END;
 $$ LANGUAGE plpgsql;
+
+
+
 
 
 

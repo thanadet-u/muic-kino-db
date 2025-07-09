@@ -32,7 +32,6 @@ DROP TYPE IF EXISTS book_language CASCADE;
 CREATE TYPE product_type AS ENUM ('book', 'stationery', 'merch');
 CREATE TYPE discount_type AS ENUM ('percentage', 'fixed');
 CREATE TYPE order_status AS ENUM ('pending', 'processing', 'shipped', 'delivered', 'cancelled');
-CREATE TYPE book_language AS ENUM ('English', 'Japanese', 'Chinese', 'Thai');
 
 -- Contacts Table
 CREATE TABLE contacts (
@@ -242,6 +241,7 @@ CREATE TABLE orders (
 CREATE TABLE order_details (
                                id SERIAL PRIMARY KEY,
                                order_id INTEGER NOT NULL REFERENCES orders(id),
+                               store_id INTEGER NOT NULL REFERENCES stores(id),
                                product_id INTEGER NOT NULL REFERENCES products(id),
                                quantity INTEGER NOT NULL CHECK (quantity > 0),
                                unit_price NUMERIC(10,2) NOT NULL CHECK (unit_price >= 0),

@@ -327,7 +327,6 @@ END;
 $$ LANGUAGE plpgsql;
 
 
-CREATE TYPE book_language AS ENUM ('English', 'Japanese', 'Chinese', 'Thai');
 
 
 
@@ -632,3 +631,274 @@ $$ LANGUAGE plpgsql;
 
 
 
+CREATE OR REPLACE FUNCTION check_product_availabilities(
+    p_customer_id INTEGER
+) RETURNS BOOLEAN AS $$
+DECLARE
+    v_item RECORD;
+    v_total_available INTEGER;
+BEGIN
+    FOR v_item IN
+        SELECT sci.product_id, sci.quantity
+        FROM shopping_cart_items sci
+        WHERE sci.customer_id = p_customer_id
+        LOOP
+            SELECT COALESCE(SUM(quantity), 0)
+            INTO v_total_available
+            FROM inventory
+            WHERE product_id = v_item.product_id AND quantity > 0;
+
+            IF v_total_available < v_item.quantity THEN
+                RETURN FALSE; -- Not enough stock
+            END IF;
+        END LOOP;
+
+    RETURN TRUE; -- All products can be fulfilled
+END;
+$$ LANGUAGE plpgsql;
+
+
+
+
+CREATE OR REPLACE FUNCTION calculate_order_total(
+    p_customer_id INTEGER
+) RETURNS NUMERIC(10,2) AS $$
+DECLARE
+    v_item RECORD;
+    v_discount_price NUMERIC(10,2);
+    v_total NUMERIC(10,2) := 0;
+BEGIN
+    FOR v_item IN
+        SELECT sci.product_id, sci.quantity, p.base_price
+        FROM shopping_cart_items sci
+                 JOIN products p ON p.id = sci.product_id
+        WHERE sci.customer_id = p_customer_id
+        LOOP
+            SELECT COALESCE(pd.final_price, v_item.base_price)
+            INTO v_discount_price
+            FROM product_discounts pd
+            WHERE pd.product_id = v_item.product_id
+            LIMIT 1;
+
+            v_total := v_total + (v_item.quantity * v_discount_price);
+        END LOOP;
+
+    RETURN v_total;
+END;
+$$ LANGUAGE plpgsql;
+
+
+
+CREATE OR REPLACE FUNCTION place_order(
+    p_customer_id INTEGER,
+    p_status order_status,
+    p_payment_method TEXT,
+    p_transaction_id TEXT
+) RETURNS INTEGER AS $$
+DECLARE
+    v_order_id INTEGER;
+    v_item RECORD;
+    v_store RECORD;
+    v_discount_price NUMERIC(10,2);
+    v_remaining_qty INTEGER;
+    v_fulfilled_qty INTEGER;
+    v_total_price NUMERIC(10,2);
+BEGIN
+    -- Check availability
+    IF NOT check_product_availabilities(p_customer_id) THEN
+        RAISE EXCEPTION 'Not enough inventory to fulfill the order';
+    END IF;
+
+    -- Calculate total price
+    v_total_price := calculate_order_total(p_customer_id);
+
+    -- Create the order
+    INSERT INTO orders (customer_id, status, payment_method, transaction_id, total_price)
+    VALUES (p_customer_id, p_status, p_payment_method, p_transaction_id, v_total_price)
+    RETURNING id INTO v_order_id;
+
+    -- Fulfill each product from multiple stores
+    FOR v_item IN
+        SELECT sci.product_id, sci.quantity, p.base_price
+        FROM shopping_cart_items sci
+                 JOIN products p ON p.id = sci.product_id
+        WHERE sci.customer_id = p_customer_id
+        LOOP
+            v_remaining_qty := v_item.quantity;
+
+            FOR v_store IN
+                SELECT * FROM inventory
+                WHERE product_id = v_item.product_id AND quantity > 0
+                ORDER BY quantity DESC
+                LOOP
+                    EXIT WHEN v_remaining_qty <= 0;
+
+                    v_fulfilled_qty := LEAST(v_remaining_qty, v_store.quantity);
+
+                    SELECT COALESCE(pd.final_price, v_item.base_price)
+                    INTO v_discount_price
+                    FROM product_discounts pd
+                    WHERE pd.product_id = v_item.product_id
+                    LIMIT 1;
+
+                    INSERT INTO order_details (
+                        order_id, product_id, quantity, unit_price, store_id
+                    ) VALUES (
+                                 v_order_id, v_item.product_id, v_fulfilled_qty, v_discount_price, v_store.store_id
+                             );
+
+                    IF p_status IN ('pending', 'processing', 'delivered') THEN
+                        UPDATE inventory
+                        SET quantity = quantity - v_fulfilled_qty
+                        WHERE store_id = v_store.store_id AND product_id = v_item.product_id;
+                    END IF;
+
+                    v_remaining_qty := v_remaining_qty - v_fulfilled_qty;
+                END LOOP;
+        END LOOP;
+
+    -- Clear cart
+    DELETE FROM shopping_cart_items WHERE customer_id = p_customer_id;
+
+    RETURN v_order_id;
+END;
+$$ LANGUAGE plpgsql;
+
+
+
+
+CREATE OR REPLACE FUNCTION edit_order_status(
+    p_order_id INTEGER,
+    p_new_status order_status
+) RETURNS VOID AS $$
+DECLARE
+    v_current_status order_status;
+    v_item RECORD;
+BEGIN
+    -- Get current status
+    SELECT status INTO v_current_status FROM orders WHERE id = p_order_id;
+
+    IF v_current_status = 'delivered' AND p_new_status = 'cancelled' THEN
+        RAISE EXCEPTION 'Cannot cancel a delivered order';
+    END IF;
+
+    -- If cancelling and not delivered, restore inventory
+    IF p_new_status = 'cancelled' AND v_current_status != 'delivered' THEN
+        FOR v_item IN
+            SELECT * FROM order_details WHERE order_id = p_order_id
+            LOOP
+                UPDATE inventory
+                SET quantity = quantity + v_item.quantity
+                WHERE store_id = v_item.store_id AND product_id = v_item.product_id;
+            END LOOP;
+    END IF;
+
+    -- Update order status
+    UPDATE orders SET status = p_new_status WHERE id = p_order_id;
+END;
+$$ LANGUAGE plpgsql;
+
+
+
+
+
+-- ================================================
+-- Restock
+-- ================================================
+
+
+
+DROP TRIGGER IF EXISTS trg_restock_alert ON inventory;
+
+
+CREATE OR REPLACE FUNCTION trigger_restock_alert_and_restock()
+    RETURNS TRIGGER AS $$
+DECLARE
+    v_restock_qty INTEGER := 20;
+    v_recent_alert_count INTEGER;
+    v_recent_restock_count INTEGER;
+BEGIN
+    IF NEW.quantity < NEW.restock_threshold THEN
+        -- Check for recent alert in last 24 hours
+        SELECT COUNT(*) INTO v_recent_alert_count
+        FROM restock_alerts
+        WHERE inventory_id = NEW.id
+          AND alert_time > NOW() - INTERVAL '1 hour';
+
+        -- Check for recent restock in last 24 hours
+        SELECT COUNT(*) INTO v_recent_restock_count
+        FROM restocks r
+                 JOIN inventory i ON r.store_id = i.store_id AND r.product_id = i.product_id
+        WHERE i.id = NEW.id
+          AND r.restock_date > NOW() - INTERVAL '1 hour';
+
+        IF v_recent_alert_count = 0 THEN
+            -- Insert alert only if none recent
+            INSERT INTO restock_alerts (
+                inventory_id,
+                product_id,
+                store_id,
+                quantity,
+                restock_threshold,
+                alert_message
+            )
+            VALUES (
+                       NEW.id,
+                       NEW.product_id,
+                       NEW.store_id,
+                       NEW.quantity,
+                       NEW.restock_threshold,
+                       'Stock below restock threshold.'
+                   );
+        END IF;
+
+        IF v_recent_restock_count = 0 THEN
+            -- Create restock only if none recent
+            PERFORM create_restock(NEW.id, v_restock_qty, 'system', 'Auto restock triggered by low inventory');
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+
+
+
+CREATE TRIGGER trg_restock_alert
+    AFTER UPDATE ON inventory
+    FOR EACH ROW
+    WHEN (OLD.quantity IS DISTINCT FROM NEW.quantity)
+EXECUTE FUNCTION trigger_restock_alert_and_restock();
+
+
+
+
+CREATE OR REPLACE FUNCTION create_restock(
+    p_inventory_id INTEGER,
+    p_quantity INTEGER,
+    p_restocked_by TEXT DEFAULT 'system',
+    p_notes TEXT DEFAULT 'Auto restock'
+) RETURNS VOID AS $$
+DECLARE
+    v_inventory RECORD;
+BEGIN
+    SELECT * INTO v_inventory FROM inventory WHERE id = p_inventory_id;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Inventory ID % not found', p_inventory_id;
+    END IF;
+
+    -- Insert restock record
+    INSERT INTO restocks (
+        store_id, product_id, quantity, restocked_by, notes
+    ) VALUES (
+                 v_inventory.store_id, v_inventory.product_id, p_quantity, p_restocked_by, p_notes
+             );
+
+    -- Update inventory
+    UPDATE inventory
+    SET quantity = quantity + p_quantity
+    WHERE id = p_inventory_id;
+END;
+$$ LANGUAGE plpgsql;
