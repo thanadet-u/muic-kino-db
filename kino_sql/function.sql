@@ -291,3 +291,46 @@ BEGIN
     WHERE store_id = p_store_id AND product_id = p_product_id;
 END;
 $$ LANGUAGE plpgsql;
+
+
+
+--8 Create Order From Shopping Cart
+
+CREATE OR REPLACE FUNCTION create_order_from_cart(p_customer_id INTEGER)
+    RETURNS INTEGER AS $$
+DECLARE
+    v_order_id INTEGER;
+    v_store_id INTEGER; -- null for online
+    v_cart_item RECORD;
+    v_total NUMERIC(10,2) := 0;
+BEGIN
+    -- Create a new order
+    INSERT INTO orders(customer_id, store_id, payment_method, total_price)
+    VALUES (p_customer_id, NULL, 'pending', 0)
+    RETURNING id INTO v_order_id;
+
+    -- Loop over cart items
+    FOR v_cart_item IN
+        SELECT sci.*, p.base_price
+        FROM shopping_cart_items sci
+                 JOIN products p ON p.id = sci.product_id
+        WHERE sci.customer_id = p_customer_id
+        LOOP
+            -- Insert into order_details
+            INSERT INTO order_details(order_id, product_id, quantity, unit_price)
+            VALUES (v_order_id, v_cart_item.product_id, v_cart_item.quantity, v_cart_item.base_price);
+
+            -- Calculate running total
+            v_total := v_total + (v_cart_item.quantity * v_cart_item.base_price);
+        END LOOP;
+
+    -- Update total price of the order
+    UPDATE orders SET total_price = v_total WHERE id = v_order_id;
+
+    -- Clear shopping cart
+    DELETE FROM shopping_cart_items WHERE customer_id = p_customer_id;
+
+    RETURN v_order_id;
+END;
+$$ LANGUAGE plpgsql;
+

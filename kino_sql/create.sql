@@ -20,6 +20,7 @@ DROP TABLE IF EXISTS stores CASCADE;
 DROP TABLE IF EXISTS customer_addresses CASCADE;
 DROP TABLE IF EXISTS customers CASCADE;
 DROP TABLE IF EXISTS contacts CASCADE;
+DROP TABLE IF EXISTS book_products CASCADE;
 
 -- Drop ENUM types
 DROP TYPE IF EXISTS product_type CASCADE;
@@ -223,7 +224,8 @@ CREATE TABLE orders (
                         order_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         status order_status DEFAULT 'pending',
                         payment_method VARCHAR(50) NOT NULL,
-                        transaction_id VARCHAR(100) UNIQUE
+                        transaction_id VARCHAR(100) UNIQUE,
+                        total_price NUMERIC(10,2) NOT NULL CHECK (total_price >= 0)
 );
 
 -- Order Details Table
