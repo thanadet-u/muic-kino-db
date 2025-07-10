@@ -794,8 +794,79 @@ END;
 $$ LANGUAGE plpgsql;
 
 
+CREATE OR REPLACE FUNCTION delete_product_by_id(p_product_id INTEGER)
+    RETURNS TEXT AS $$
+DECLARE
+    v_product_type TEXT;
+BEGIN
+    -- Get product type
+    SELECT product_type INTO v_product_type
+    FROM products
+    WHERE id = p_product_id;
 
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Product with ID % not found', p_product_id;
+    END IF;
 
+    -- Delete from subtype table
+    IF v_product_type = 'book' THEN
+        DELETE FROM book_products WHERE product_id = p_product_id;
+    ELSIF v_product_type = 'stationery' THEN
+        DELETE FROM non_book_products WHERE product_id = p_product_id;
+    ELSE
+        RAISE EXCEPTION 'Unsupported product type: %', v_product_type;
+    END IF;
+
+    -- Delete from main products table
+    DELETE FROM products WHERE id = p_product_id;
+
+    RETURN format('Deleted product %s (type: %s)', p_product_id, v_product_type);
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION list_products_all()
+    RETURNS TABLE (
+        product_id INTEGER,
+        sku VARCHAR,
+        name VARCHAR,
+        product_type VARCHAR,
+        base_price NUMERIC,
+        brand_id INTEGER,
+        brand_name VARCHAR,
+        isbn CHAR(13),
+        language VARCHAR,
+        item_type VARCHAR,
+        specifications JSONB,
+        store_id INTEGER,
+        store_name VARCHAR,
+        inventory_quantity INTEGER
+    ) AS $$
+BEGIN
+    RETURN QUERY
+        SELECT
+            p.id,
+            p.sku,
+            p.name,
+            p.product_type::VARCHAR,
+            p.base_price,
+            p.brand_id,
+            b.name,
+            bp.isbn,
+            bp.language,
+            nbp.item_type,
+            nbp.specifications,
+            i.store_id,
+            s.name,
+            i.quantity
+        FROM products p
+            LEFT JOIN brands b ON p.brand_id = b.id
+            LEFT JOIN book_products bp ON p.id = bp.product_id
+            LEFT JOIN non_book_products nbp ON p.id = nbp.product_id
+            LEFT JOIN inventory i ON p.id = i.product_id
+            LEFT JOIN stores s ON i.store_id = s.id
+        ORDER BY p.id, i.store_id;
+END;
+$$ LANGUAGE plpgsql;
 
 -- ================================================
 -- Restock
