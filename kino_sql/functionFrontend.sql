@@ -545,6 +545,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+
 CREATE OR REPLACE FUNCTION get_order_detail(p_order_id INTEGER)
     RETURNS TABLE (
                       order_id INTEGER,
@@ -582,5 +583,84 @@ BEGIN
     WHERE id = p_order_id;
 
     RETURN v_status;
+END;
+$$ LANGUAGE plpgsql;
+
+
+
+
+
+CREATE OR REPLACE FUNCTION register_customer(
+    p_first_name TEXT,
+    p_last_name TEXT,
+    p_email TEXT,
+    p_password_hash TEXT
+) RETURNS INTEGER AS $$
+DECLARE
+    v_contact_id INTEGER;
+    v_customer_id INTEGER;
+BEGIN
+    -- Ensure the email doesn't already exist
+    IF EXISTS (SELECT 1 FROM contacts WHERE email = p_email) THEN
+        RAISE EXCEPTION 'Email % is already registered.', p_email;
+    END IF;
+
+    -- Create contact with only email (no phone)
+    INSERT INTO contacts (email)
+    VALUES (p_email)
+    RETURNING id INTO v_contact_id;
+
+    -- Create customer linked to contact
+    INSERT INTO customers (first_name, last_name, contact_id, password_hash)
+    VALUES (p_first_name, p_last_name, v_contact_id, p_password_hash)
+    RETURNING id INTO v_customer_id;
+
+    RETURN v_customer_id;
+END;
+$$ LANGUAGE plpgsql;
+
+
+
+CREATE OR REPLACE FUNCTION login_customer(
+    p_email TEXT,
+    p_password_hash TEXT
+) RETURNS INTEGER AS $$
+DECLARE
+    v_customer_id INTEGER;
+BEGIN
+    SELECT c.id
+    INTO v_customer_id
+    FROM customers c
+             JOIN contacts ct ON c.contact_id = ct.id
+    WHERE ct.email = p_email AND c.password_hash = p_password_hash;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Invalid email or password.';
+    END IF;
+
+    RETURN v_customer_id;
+END;
+$$ LANGUAGE plpgsql;
+
+
+
+CREATE OR REPLACE FUNCTION update_customer_phone(
+    p_customer_id INTEGER,
+    p_phone TEXT
+) RETURNS VOID AS $$
+DECLARE
+    v_contact_id INTEGER;
+BEGIN
+    SELECT contact_id INTO v_contact_id
+    FROM customers
+    WHERE id = p_customer_id;
+
+    IF v_contact_id IS NULL THEN
+        RAISE EXCEPTION 'Customer not found or missing contact.';
+    END IF;
+
+    UPDATE contacts
+    SET phone = p_phone
+    WHERE id = v_contact_id;
 END;
 $$ LANGUAGE plpgsql;
