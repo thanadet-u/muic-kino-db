@@ -544,3 +544,43 @@ BEGIN
         WHERE p.name ILIKE '%' || p_title || '%';
 END;
 $$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION get_order_detail(p_order_id INTEGER)
+    RETURNS TABLE (
+                      order_id INTEGER,
+                      product_id INTEGER,
+                      product_name VARCHAR,
+                      quantity INTEGER,
+                      unit_price NUMERIC,
+                      discount_id INTEGER,
+                      store_id INTEGER
+                  ) AS $$
+BEGIN
+    RETURN QUERY
+        SELECT
+            od.order_id,
+            od.product_id,
+            p.name,
+            od.quantity,
+            od.unit_price,
+            od.discount_id,
+            od.store_id
+        FROM order_details od
+                 JOIN products p ON od.product_id = p.id
+        WHERE od.order_id = p_order_id;
+END;
+$$ LANGUAGE plpgsql;
+
+
+CREATE OR REPLACE FUNCTION get_order_status(p_order_id INTEGER)
+    RETURNS order_status AS $$
+DECLARE
+    v_status order_status;
+BEGIN
+    SELECT status INTO v_status
+    FROM orders
+    WHERE id = p_order_id;
+
+    RETURN v_status;
+END;
+$$ LANGUAGE plpgsql;
